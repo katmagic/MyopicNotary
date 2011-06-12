@@ -438,7 +438,11 @@ class BigNum:
 		return bool( libssl.BN_is_prime(self, 0, None, ctx(), None) )
 
 def generate_prime(bits):
-	"""Generate a prime of bits bits."""
+	"""Generate a prime of bits bits.
+
+	>>> all(generate_prime(128).is_prime() for x in range(14))
+	True
+	"""
 
 	bn = BigNum()
 	libssl.BN_generate_prime(bn, bits, 0, None, None, None, None)
