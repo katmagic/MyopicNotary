@@ -231,13 +231,20 @@ class BigNum:
 		True
 		>>> BigNum(142) == 978
 		False
+		>>> BigNum(142978) == 'blah'
+		False
+		>>> BigNum(142978) == -142978
+		False
+		>>> BigNum(142978) == (-142978+0j)
+		False
 		"""
 
-		if isinstance(x, int):
+		if isinstance(x, int) and (x >= 0):
 			x = BigNum(x)
-		elif isinstance(x, float) and x.is_integer():
+		elif isinstance(x, float) and x.is_integer() and (x >= 0):
 			x = BigNum(int(x))
-		elif isinstance(x, complex) and not(x.imag) and x.real.is_integer():
+		elif isinstance(x, complex) and not(x.imag) and x.real.is_integer() and \
+		     (x.real >= 0):
 			x = BigNum(int(x.real))
 		elif isinstance(x, BigNum):
 			pass
