@@ -44,7 +44,8 @@ for funcname, argtypes, *restype in (
 	('rshift', (c_void_p, c_void_p, c_int), c_int),
 	('CTX_new', 0, c_void_p),
 	('CTX_init', 1, None),
-	('CTX_free', 1, None)
+	('CTX_free', 1, None),
+	('generate_prime', (c_void_p, c_int, c_int) + (c_void_p,)*4,  c_void_p)
 ):
 	func = getattr(libssl, 'BN_' + funcname)
 
@@ -397,3 +398,10 @@ class BigNum:
 		"""
 
 		raise NotImplementedError("BigNum supports only integers.")
+
+def generate_prime(bits):
+	"""Generate a prime of bits bits."""
+
+	bn = BigNum()
+	libssl.BN_generate_prime(bn, bits, 0, None, None, None, None)
+	return bn
