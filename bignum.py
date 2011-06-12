@@ -82,6 +82,21 @@ def ctx():
 class BigNum:
 	"""Use an OpenSSL BIGNUM."""
 
+	@classmethod
+	def from_voidp(class_, voidp):
+		"""Create a BigNum instance from a pointer to an OpenSSL BIGNUM."""
+
+		bn = class_.__new__(class_)
+
+		if isinstance(voidp, c_void_p):
+			bn._as_parameter_ = voidp
+		elif isinstance(voidp, c_int):
+			bn._as_parameter_ = c_void_p(voidp)
+		else:
+			raise TypeError("voidp must be a c_void_p or a c_int")
+
+		return bn
+
 	def _ensure_arg_type(meth):
 		"""Ensure that all the arguments of meth are BigNums."""
 
@@ -125,6 +140,13 @@ class BigNum:
 	def __del__(self):
 		if libssl:
 			libssl.BN_clear_free(self)
+
+	@classmethod
+	def from_param(class_, p):
+		if isinstance(p, class_):
+			raise ArgumentError("wrong type")
+
+		return p
 
 	def __int__(self):
 		"""
