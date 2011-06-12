@@ -335,6 +335,7 @@ class BigNum:
 	for m in ('add', 'and', 'divmod', 'floordiv', 'lshift', 'mod', 'mul', 'or',
 	          'pow', 'rshift', 'shift', 'sub', 'truediv', 'xor'):
 		locals()['r'+m] = _ensure_arg_type(lambda self, x: getattr(x, m)(self))
+	del m
 
 	def __repr__(self):
 		"""
