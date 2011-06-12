@@ -42,6 +42,7 @@ for funcname, argtypes, *restype in (
 	('cmp', 2),
 	('lshift', (c_void_p, c_void_p, c_int), c_int),
 	('rshift', (c_void_p, c_void_p, c_int), c_int),
+	('mod_inverse', 4, c_void_p),
 	('CTX_new', 0, c_void_p),
 	('CTX_init', 1, None),
 	('CTX_free', 1, None),
@@ -344,19 +345,31 @@ class BigNum:
 
 		return self
 
-	@_ensure_arg_type
 	def __pow__(self, x, y=None):
 		"""
 		>>> pow(BigNum(14), 29, 78)
 		BigNum(14)
 		>>> pow(BigNum(14297), 8)
 		BigNum(1745658700859693673769171943693761)
+		>>> pow(BigNum(1429), -1, 78)
+		BigNum(25)
 		"""
+
+		if (x != -1) and not(isinstance(x, BigNum)):
+			try:
+				x = BigNum(x)
+			except:
+				raise RuntimeError(x)
+		if y and not(isinstance(y, BigNum)):
+			y = BigNum(y)
 
 		res = BigNum()
 
 		if y:
-			libssl.BN_mod_exp(res, self, x, y, ctx())
+			if x == -1:
+				libssl.BN_mod_inverse(res, self, y, ctx())
+			else:
+				libssl.BN_mod_exp(res, self, x, y, ctx())
 		else:
 			libssl.BN_exp(res, self, x, ctx())
 
