@@ -135,13 +135,29 @@ class BigNum:
 
 		return functools.update_wrapper(new_meth, meth)
 
-	def __init__(self, i=None):
-		if i is None:
-			i = 0
-		elif not isinstance(i, int):
-			raise TypeError(
-				"%s() argument must an int, not '%s'" % (type(self), type(i))
+	def __init__(self, i=0):
+		"""Create a BigNum equal to i.
+
+		>>> BigNum()
+		BigNum(0)
+		>>> BigNum(142978)
+		BigNum(142978)
+		>>> BigNum(-1)
+		Traceback (most recent call last):
+		...
+		ValueError: BigNum() argument must be positive
+		>>> BigNum('invalid')
+		Traceback (most recent call last):
+		...
+		ValueError: BigNum() argument must be 'int', not 'str'
+		"""
+
+		if not isinstance(i, int):
+			raise ValueError(
+				"BigNum() argument must be 'int', not '%s'" % type(i).__name__
 			)
+		elif i < 0:
+			raise ValueError("BigNum() argument must be positive")
 
 		i_repr = i.to_bytes(math.ceil(i.bit_length()/8) or 1, 'big')
 		self._as_parameter_ = libssl.BN_bin2bn(
