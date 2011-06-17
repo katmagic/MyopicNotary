@@ -110,6 +110,35 @@ class BigNum:
 
 		return bn
 
+	@classmethod
+	def deserialize(class_, serialization):
+		 """Turn a bytes representation of a BigNum (serialization) into a BigNum.
+
+		 >>> BigNum.deserialize( b'a psychedelic yuppie flu' )
+		 BigNum(2381540143446229881815222106281594517422018804190892420213)
+		 >>> BigNum.deserialize(b'https://github.com/katmagic')
+		 BigNum(42970254204555295092123854833146627000113969249458164661687380323)
+		 """
+
+		 r = BigNum()
+		 s = create_string_buffer(serialization)
+		 libssl.BN_bin2bn(s, len(serialization), r)
+		 return r
+
+	def serialize(self):
+		"""Create a bytes representation of ourself.
+
+		>>> BigNum(4986946331689169475).serialize()
+		b'E51DFE2C'
+		>>> BigNum(2361589257293893575109679348937319).serialize()
+		b'torproject.org'
+		"""
+		i_repr_size = (math.ceil(libssl.BN_num_bits(self)/8) or 1)
+		i_repr = create_string_buffer(i_repr_size)
+		libssl.BN_bn2bin(self, i_repr)
+
+		return string_at(i_repr, i_repr_size)
+
 	def _ensure_arg_type(meth):
 		"""Ensure that all the arguments of meth are BigNums."""
 
@@ -177,10 +206,7 @@ class BigNum:
 		142978
 		"""
 
-		i_repr_size = math.ceil(libssl.BN_num_bits(self)/8)
-		i_repr = create_string_buffer(i_repr_size)
-		libssl.BN_bn2bin(self, i_repr)
-		return int.from_bytes(string_at(i_repr, i_repr_size), 'big')
+		return int.from_bytes(self.serialize(), 'big')
 
 	def __abs__(self):
 		"""
