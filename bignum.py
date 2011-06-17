@@ -87,16 +87,26 @@ class BigNum:
 
 	@classmethod
 	def from_voidp(class_, voidp):
-		"""Create a BigNum instance from a pointer to an OpenSSL BIGNUM."""
+		"""Create a BigNum instance from a pointer to an OpenSSL BIGNUM.
+
+		>>> voidp = libssl.BN_new()
+		>>> libssl.BN_init(voidp)
+		>>> libssl.BN_add(voidp, BigNum(142), BigNum(978))
+		1
+		>>> BigNum.from_voidp(voidp)
+		BigNum(1120)
+		"""
 
 		bn = class_.__new__(class_)
 
 		if isinstance(voidp, c_void_p):
 			bn._as_parameter_ = voidp
-		elif isinstance(voidp, c_int):
+		elif isinstance(voidp, int):
 			bn._as_parameter_ = c_void_p(voidp)
 		else:
-			raise TypeError("voidp must be a c_void_p or a c_int")
+			raise TypeError(
+				"voidp must be a c_void_p or a c_int, not a %s" % type(voidp)
+			)
 
 		return bn
 
