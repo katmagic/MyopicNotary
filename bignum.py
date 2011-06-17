@@ -167,15 +167,8 @@ class BigNum:
 		)
 
 	def __del__(self):
-		if libssl:
+		if libssl and hasattr(self, '_as_parameter_'):
 			libssl.BN_clear_free(self)
-
-	@classmethod
-	def from_param(class_, p):
-		if isinstance(p, class_):
-			raise ArgumentError("wrong type")
-
-		return p
 
 	def __int__(self):
 		"""
