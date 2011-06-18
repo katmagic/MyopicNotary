@@ -133,7 +133,7 @@ class BigNum:
 		>>> BigNum(2361589257293893575109679348937319).serialize()
 		b'torproject.org'
 		"""
-		i_repr_size = (math.ceil(libssl.BN_num_bits(self)/8) or 1)
+		i_repr_size = (math.ceil(len(self)/8) or 1)
 		i_repr = create_string_buffer(i_repr_size)
 		libssl.BN_bn2bin(self, i_repr)
 
@@ -340,6 +340,16 @@ class BigNum:
 		"""
 
 		return (libssl.BN_cmp(self, x) == 1)
+
+	def __len__(self):
+		"""Our length in bits.
+		>>> len(BigNum(142978))
+		18
+		>>> len(BigNum(1<<399))
+		400
+		"""
+
+		return libssl.BN_num_bits(self)
 
 	def __lshift__(self, x):
 		"""
