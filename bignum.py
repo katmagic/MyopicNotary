@@ -402,7 +402,8 @@ class BigNum:
 		return self
 
 	def __pow__(self, x, y=None):
-		"""
+		"""Raise self to x mod y (if y is not None). THIS IS NOT CONSTANT-TIME.
+
 		>>> pow(BigNum(14), 29, 78)
 		BigNum(14)
 		>>> pow(BigNum(14297), 8)
