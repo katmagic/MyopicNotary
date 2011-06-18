@@ -502,3 +502,8 @@ def generate_prime(bits):
 	bn = BigNum()
 	libssl.BN_generate_prime(bn, bits, 0, None, None, None, None)
 	return bn
+
+def generate_random_bignum(bits, entropy=open("/dev/urandom", 'rb')):
+	"""Generate a random BigNum with the entropic data coming from entropy."""
+
+	return BigNum.deserialize( entropy.read( math.ceil(bits/8) ) )
