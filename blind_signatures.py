@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 """
 >>> blinder = Blinder.generate(256)
->>> blinding_factor, blinded_msg = blinder.blind(b'msg')
->>> sig = blinder.sign(blinded_msg)
->>> blinder.verify(b'msg', sig, blinding_factor)
+>>> blinding_factor, blinded_msg = blinder.public.blind(b'msg')
+>>> sig = blinder.public.unblind( blinder.sign(blinded_msg), blinding_factor )
+>>> blinder.public.verify(b'msg', sig)
 True
->>> blinder.verify(b'msg', b'invalid signature', blinding_factor)
-False
->>> blinder.verify(b'msg', sig, bignum.BigNum(142978))
+>>> blinder.public.verify(b'msg', b'invalid signature')
 False
 """
 import bignum
@@ -135,7 +133,7 @@ class Blinder:
 		m = bignum.BigNum.deserialize(blinded_msg)
 		return pow(m, self.d, self.n).serialize()
 
-	def _unblind(self, blinded_sig, blinding_factor):
+	def unblind(self, blinded_sig, blinding_factor):
 		"""Unblind a signature blinded_sig of a message that has been blinded with
 		blinding_factor."""
 		
@@ -143,7 +141,7 @@ class Blinder:
 		s = bs * pow(blinding_factor, -1, self.n)
 		return s.serialize()
 
-	def _verify(self, message, signature):
+	def verify(self, message, signature):
 		"""Verify a signature of an unblinded message signed by self. We return True
 		if the signature is valid and False otherwise."""
 		
@@ -151,11 +149,4 @@ class Blinder:
 		s = bignum.BigNum.deserialize(signature)
 		
 		return (pow(s, self.e, self.n) == m)
-	
-	def verify(self, message, blinded_sig, blinding_factor):
-		"""Verify that a blinded message signature (blinded_sig) is the result of
-		self blindly signing the message message that has been blinded with
-		blinding_factor.
-		"""
-		
-		return self._verify(message, self._unblind(blinded_sig, blinding_factor))
+
