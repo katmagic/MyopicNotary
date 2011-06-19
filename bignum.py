@@ -522,7 +522,16 @@ def generate_prime(bits):
 	libssl.BN_generate_prime(bn, bits, 0, None, None, None, None)
 	return bn
 
-def generate_random_bignum(bits, entropy=open("/dev/urandom", 'rb')):
-	"""Generate a random BigNum with the entropic data coming from entropy."""
+# Because Python generates and caches default values, /dev/urandom is only
+# opened once.
+def generate_random_bignum(bits, entropy_file=open("/dev/urandom", "rb")):
+	"""Generate a random BigNum by reading bits bits from entropy_file."""
 
-	return BigNum.deserialize( entropy.read( math.ceil(bits/8) ) )
+	rv = BigNum.deserialize( entropy_file.read( math.ceil(bits/8) ) )
+
+	if bits % 8:
+		mask = (BigNum(1) << bits) - 1
+		rv &= mask
+
+	return rv
+
