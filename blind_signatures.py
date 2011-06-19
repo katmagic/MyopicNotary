@@ -50,6 +50,12 @@ class Blinder:
 		>>> b_ = Blinder.deserialize( b.serialize() )
 		>>> all(getattr(b, _) == getattr(b_, _) for _ in 'ned')
 		True
+		>>> p = b.public
+		>>> p_ = Blinder.deserialize( p.public.serialize() )
+		>>> all(getattr(p, _) == getattr(p_, _) for _ in 'ned')
+		True
+		>>> (p.n == b.n) and (p.e == b.e) and not(p.d)
+		True
 		"""
 
 		data = msgpack.loads(serialized)
@@ -58,9 +64,11 @@ class Blinder:
 	def serialize(self):
 		"""Return a bytes representation of ourselves."""
 
-		return msgpack.dumps({
-			attr: getattr(self, attr).serialize() for attr in 'ned'
-		})
+		return msgpack.dumps(dict(
+			n = self.n.serialize(),
+			e = self.e.serialize(),
+			d = (self.d and self.d.serialize())
+		))
 
 	def __init__(self, n, e, d=None):
 		def b(_):
