@@ -12,7 +12,7 @@ BigNum(4)
 """
 from ctypes import *
 from ctypes.util import find_library
-from threading import local
+import threading
 import functools
 import math
 
@@ -73,10 +73,28 @@ class __BN_CTX:
 			libssl.BN_CTX_free(self)
 
 def ctx():
-	"""Return a BN_CTX unique to this thread."""
+	"""Return a BN_CTX unique to this thread.
+
+	>>> ctxes = []
+	>>> def mkctx():
+	... 	ctxes.append( (ctx(), ctx()) )
+	...
+	>>> for x in range(2):
+	... 	t = threading.Thread(target=mkctx)
+	... 	t.start()
+	... 	t.join()
+	>>> ctxes[0][0] is ctxes[0][1]
+	True
+	>>> ctxes[1][0] is ctxes[1][1]
+	True
+	>>> ctxes[0][0] is not ctxes[1][0]
+	True
+	"""
 
 	if not hasattr(ctx, 'local_data'):
-		ctx.local_data = local()
+		ctx.local_data = threading.local()
+
+	if not hasattr(ctx.local_data, 'bn_ctx'):
 		ctx.local_data.bn_ctx = __BN_CTX()
 
 	return ctx.local_data.bn_ctx
