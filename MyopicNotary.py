@@ -35,11 +35,11 @@ class MyopicNotary:
 		self._server = socket.socket()
 		self._server.bind(listen)
 		self._server.listen(8)
-		
+
 		self._logger = logger
 
 		self.privkey = Blinder.deserialize(privkey)
-		
+
 		self.clients = set()
 
 	@property
@@ -48,7 +48,7 @@ class MyopicNotary:
 		services. It consists of our IP or DNS name, the port we listen on, the time
 		(in seconds) that we require a client to wait before giving them a token,
 		and our public key, seperated by colons."""
-		
+
 		port = self._server.getsockname()[1]
 		pubkey = base64.b64encode( self.privkey.public.serialize() ).decode()
 
@@ -61,11 +61,11 @@ class MyopicNotary:
 
 	def serve_once(self):
 		"""Accept and process one connection in a new thread."""
-		
+
 		con = self._server.accept()[0]
 		t = threading.Thread(target=self.__serve_once, args=(con,))
 		t.start()
-	
+
 	def __serve_once(self, con):
 		# We only allow a client to wait for one token at a time.
 		client_addr = con.getpeername()[0]
@@ -92,13 +92,13 @@ class MyopicNotary:
 				signature = self.privkey.sign(data)
 			sig_thread = threading.Thread(target=sign_data)
 			sig_thread.run()
-		
+
 			time.sleep(self.wait_time/2)
-		
+
 			if signature:
 				con.send(signature)
 				con.close()
-		
+
 			# If we haven't got a chance to sign the data yet, we're too vulnerable to
 			# a timing attack to wait for it. We'll send the client a string of zeros
 			# to signal an error and warn about it.
@@ -112,7 +112,7 @@ class MyopicNotary:
 
 		except socket.error:
 			pass
-		
+
 		finally:
 			self.clients.remove(client_addr)
 
@@ -121,12 +121,12 @@ class NotaryClient:
 	def from_public_id(class_, public_id):
 		"""Create a NotaryClient object from a string of the form returned by
 		MyopicNotary.public_id()."""
-		
+
 		server, port, wait_time, pubkey = public_id.split(":")
 		pubkey = pubkey.encode()
 		port = int(port)
 		wait_time = int(wait_time)
-		
+
 		return class_( (server, port), pubkey, wait_time )
 
 	def __init__(self, notary_addr, notary_key, wait_time):
@@ -137,9 +137,9 @@ class NotaryClient:
 	def request_sig(self, token):
 		"""Request that the notary notarize token. This will block wait_time (or
 		possibly a little more."""
-		
+
 		blinding_factor, blinded_token = self.notary_key.blind(token)
-		
+
 		con = socket.socket()
 		con.connect(self.notary_addr)
 		con.send(blinded_token)
@@ -157,7 +157,7 @@ class NotaryClient:
 		# that we can ignore the possibility.
 		elif data.startswith(b"ERROR: "):
 			raise MyopicError( "Notary erred: " + data[7:].decode() )
-		
+
 		sig = self.notary_key.unblind(data, blinding_factor)
 		if not self.verify(token, sig):
 			raise MyopicError("The notary sent us invalid data! Mofo.")

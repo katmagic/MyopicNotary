@@ -18,7 +18,7 @@ class Blinder:
 	@classmethod
 	def generate(class_, bits):
 		"""Generate a Blinder on the basis of an RSA key of bits bits."""
-		
+
 		# Generate two primes of bits/2. When multiplied, they'll make an RSA key of
 		# bits bits.
 		p = bignum.generate_prime(bits//2)
@@ -34,7 +34,7 @@ class Blinder:
 			e = bignum.BigNum(3)
 		else:
 			e = bignum.BigNum(65537)
-			
+
 		# Generate our private key.
 		d = pow(e, -1, φ)
 
@@ -43,7 +43,7 @@ class Blinder:
 	@classmethod
 	def deserialize(class_, serialized):
 		"""Load a Blinder instance serialized with Blinder.serialize().
-		
+
 		>>> b = Blinder.generate(256)
 		>>> b_ = Blinder.deserialize( b.serialize() )
 		>>> all(getattr(b, _) == getattr(b_, _) for _ in 'ned')
@@ -108,14 +108,14 @@ class Blinder:
 		>>> b._bignum_digest(b"hanging") == b._bignum_digest(b"tree")
 		False
 		"""
-		
+
 		return bignum.BigNum.deserialize( hashlib.sha512(msg).digest() ) % self.n
 
 	def blind(self, msg):
 		"""Blind a message msg to self (where msg is a bytes instance). We return a
 		tuple (blinding_factor, blinded_sig). (blinding_factor is a BigNum and
 		blinded_sig is a bytes instance.)"""
-		
+
 		m = self._bignum_digest(msg)
 		r = bignum.generate_random_bignum(len(self.n))
 		blinded = pow(r, self.e, self.n) * (m % self.n)
@@ -126,17 +126,17 @@ class Blinder:
 		"""Sign a message blinded_msg that has already been blinded by blind().
 		DANGER: If you don't pad the amount of time this takes to a fixed amount,
 		you will reveal your secret key."""
-		
+
 		if not self.d:
 			raise NotImplementedError("we can't sign stuff (we're not a private key)")
-		
+
 		m = bignum.BigNum.deserialize(blinded_msg)
 		return pow(m, self.d, self.n).serialize()
 
 	def unblind(self, blinded_sig, blinding_factor):
 		"""Unblind a signature blinded_sig of a message that has been blinded with
 		blinding_factor."""
-		
+
 		bs = bignum.BigNum.deserialize(blinded_sig)
 		s = bs * pow(blinding_factor, -1, self.n)
 		return s.serialize()
@@ -144,9 +144,9 @@ class Blinder:
 	def verify(self, message, signature):
 		"""Verify a signature of an unblinded message signed by self. We return True
 		if the signature is valid and False otherwise."""
-		
+
 		m = self._bignum_digest(message)
 		s = bignum.BigNum.deserialize(signature)
-		
+
 		return (pow(s, self.e, self.n) == m)
 
