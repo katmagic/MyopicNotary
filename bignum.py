@@ -529,9 +529,5 @@ def generate_random_bignum(bits, entropy_file=open("/dev/urandom", "rb")):
 
 	rv = BigNum.deserialize( entropy_file.read( math.ceil(bits/8) ) )
 
-	if bits % 8:
-		mask = (BigNum(1) << bits) - 1
-		rv &= mask
-
-	return rv
+	return rv % (BigNum(1) << bits)
 
