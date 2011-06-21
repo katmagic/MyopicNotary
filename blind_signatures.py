@@ -11,6 +11,7 @@ False
 import bignum
 import msgpack
 import hashlib
+import math
 
 class Blinder:
 	"""Make and verify blinded signatures."""
@@ -83,6 +84,8 @@ class Blinder:
 		self.e = b(e)
 		self.d = (d and b(d))
 
+		self._n_len = len(self.n)
+
 	@property
 	def public(self):
 		"""Return a public key."""
@@ -108,8 +111,21 @@ class Blinder:
 		>>> b._bignum_digest(b"hanging") == b._bignum_digest(b"tree")
 		False
 		"""
+		
+		# Pad digests so that they have they have the same length as self.n.
+		hasher = hashlib.sha512(msg)
+		dgst = b''
 
-		return bignum.BigNum.deserialize( hashlib.sha512(msg).digest() ) % self.n
+		for i in range( math.ceil(self._n_len/(8 * hasher.digest_size)) ):
+			hasher.update( bytes((i,)) )
+			dgst += hasher.digest()
+
+		# Mask dgst to the length of self.n.
+		dgst = bignum.BigNum.deserialize(dgst) % (1 << self._n_len)
+		# And then ensure that dgst is less than self.n.
+		dgst = dgst % self.n
+
+		return dgst
 
 	def blind(self, msg):
 		"""Blind a message msg to self (where msg is a bytes instance). We return a
