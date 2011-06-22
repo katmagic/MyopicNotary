@@ -70,6 +70,21 @@ class Blinder:
 		))
 
 	def __init__(self, n, e, d=None):
+		"""
+		>>> Blinder(2 << 8192, 3)
+		Traceback (most recent call last):
+		...
+		OverflowError: Keys over 4096 bits are not allowed
+		>>> Blinder(2 << 1024, 2 << 256)
+		Traceback (most recent call last):
+		...
+		OverflowError: e is too large
+		>>> Blinder(2 << 1024, 65537, 2 << 4096)
+		Traceback (most recent call last):
+		...
+		OverflowError: d is too large
+		"""
+
 		def b(_):
 			if isinstance(_, bignum.BigNum):
 				return _
@@ -83,8 +98,15 @@ class Blinder:
 		self.n = b(n)
 		self.e = b(e)
 		self.d = (d and b(d))
-
 		self._n_len = len(self.n)
+
+		# Ensure that keys are not too large (to avoid DoS attacks).
+		if self._n_len > 4096:
+			raise OverflowError("Keys over 4096 bits are not allowed")
+		elif len(self.e) > 128:
+			raise OverflowError("e is too large")
+		elif self.d and (len(self.d) > 4096):
+			raise OverflowError("d is too large")
 
 	@property
 	def public(self):
