@@ -120,32 +120,29 @@ class Blinder:
 	"""Make and verify blinded signatures."""
 
 	_pub_attrs = ('n', 'e')
-	_priv_attrs = ('n', 'e', 'd')
+	_priv_attrs = ('n', 'e', 'p', 'q', 'dP', 'dQ', 'qInv')
 
 	@classmethod
 	def generate(class_, bits):
 		"""Generate a Blinder on the basis of an RSA key of bits bits."""
 
-		# Generate two primes of bits/2. When multiplied, they'll make an RSA key of
-		# bits bits.
-		p = generate_prime(bits//2)
-		q = generate_prime(bits//2)
+		res = class_.__new__(class_)
 
-		# Calculate the totient of p*q.
-		φ = (p-1) * (q-1)
+		# Generate two primes of bits/2. When multiplied, they'll make a semiprime
+		# of bits bits, which will be the basis of our key.
+		res.p = generate_prime(bits//2)
+		res.q = generate_prime((bits+1)//2)
+		res.n = res.p * res.q
 
-		# e *must* be less than φ(p*q). This should never be a problem if you choose
-		# any reasonable value for bits, but it might be a problem in an example or
-		# such.
-		if 65537 > φ:
-			e = 3
-		else:
-			e = 65537
+		# Set e to a constant value.
+		res.e = 65537
 
-		# Generate our private key.
-		d = mod_inverse(e, φ)
+		# Compute values to use for signatures using the Chinese Remainder Theorem.
+		res.dP = mod_inverse(res.e, res.p-1)
+		res.dQ = mod_inverse(res.e, res.q-1)
+		res.qInv = mod_inverse(res.q, res.p)
 
-		return class_(n=p*q, e=e, d=d)
+		return res
 
 	@classmethod
 	def deserialize(class_, serialized):
@@ -153,13 +150,11 @@ class Blinder:
 
 		>>> b = Blinder.generate(256)
 		>>> b_ = Blinder.deserialize( b.serialize() )
-		>>> all(getattr(b, _) == getattr(b_, _) for _ in 'ned')
+		>>> all(getattr(b, _) == getattr(b_, _) for _ in Blinder._priv_attrs)
 		True
 		>>> p = b.public
 		>>> p_ = Blinder.deserialize( p.public.serialize() )
-		>>> all(getattr(p, _) == getattr(p_, _) for _ in 'ned')
-		True
-		>>> (p.n == b.n) and (p.e == b.e) and not(p.d)
+		>>> all(getattr(p, _) == getattr(p_, _) for _ in Blinder._pub_attrs)
 		True
 		"""
 
@@ -177,34 +172,12 @@ class Blinder:
 			_: _i_to_b(getattr(self, _, None)) for _ in self._priv_attrs
 		})
 
-	def __init__(self, n, e, d=None):
-		"""
-		>>> Blinder(2 << 8192, 3)
-		Traceback (most recent call last):
-		...
-		OverflowError: Keys over 4096 bits are not allowed
-		>>> Blinder(2 << 1024, 2 << 256)
-		Traceback (most recent call last):
-		...
-		OverflowError: e is too large
-		>>> Blinder(2 << 1024, 65537, 2 << 4096)
-		Traceback (most recent call last):
-		...
-		OverflowError: d is too large
-		"""
+	def __init__(self, n, e, p=None, q=None, dP=None, dQ=None, qInv=None):
+		for _ in self._priv_attrs:
+			setattr(self, _, locals()[_])
 
-		self.n = n
-		self.e = e
-		self.d = d
-		self._n_len = self.n.bit_length()
-
-		# Ensure that keys are not too large (to avoid DoS attacks).
-		if self._n_len > 4096:
-			raise OverflowError("Keys over 4096 bits are not allowed")
-		elif self.e.bit_length() > 128:
-			raise OverflowError("e is too large")
-		elif self.d and (self.d.bit_length() > 4096):
-			raise OverflowError("d is too large")
+			if (getattr(self, _) or 0).bit_length() > 4096:
+				raise OverflowError(_ + " is too large")
 
 	@property
 	def public(self):
@@ -215,12 +188,16 @@ class Blinder:
 	def is_public(self):
 		"""Is this a public key?"""
 
-		return not(self.d)
+		return not(self.is_private())
 
 	def is_private(self):
 		"""Is this a private key?"""
 
-		return bool(self.d)
+		for attr in self._priv_attrs:
+			if not getattr(self, attr):
+				return False
+
+		return True
 
 	def _int_digest(self, msg):
 		"""Return the int representation of a SHA512 digest of msg modulo N.
@@ -236,12 +213,12 @@ class Blinder:
 		hasher = hashlib.sha512(msg)
 		dgst = b''
 
-		for i in range( math.ceil(self._n_len/(8 * hasher.digest_size)) ):
+		for i in range( math.ceil(self.n.bit_length()/(8 * hasher.digest_size)) ):
 			hasher.update( bytes((i,)) )
 			dgst += hasher.digest()
 
 		# Mask dgst to the length of self.n.
-		dgst = _b_to_i(dgst) % (1 << self._n_len)
+		dgst = _b_to_i(dgst) % (1 << self.n.bit_length())
 		# And then ensure that dgst is less than self.n.
 		dgst = dgst % self.n
 
@@ -253,7 +230,7 @@ class Blinder:
 		blinded_sig is a bytes instance.)"""
 
 		m = self._int_digest(msg)
-		r = randint(self._n_len)
+		r = randint(self.n.bit_length())
 		blinded = pow(r, self.e, self.n) * (m % self.n)
 
 		return (r, _i_to_b(blinded))
@@ -263,11 +240,17 @@ class Blinder:
 		DANGER: If you don't pad the amount of time this takes to a fixed amount,
 		you will reveal your secret key."""
 
-		if not self.d:
+		if not self.is_private():
 			raise NotImplementedError("we can't sign stuff (we're not a private key)")
 
 		m = _b_to_i(blinded_msg)
-		return _i_to_b(pow(m, self.d, self.n))
+
+		s1 = pow(m, self.dP, self.p)
+		s2 = pow(m, self.dQ, self.q)
+		h = (self.qInv * (s1 - s2)) % self.p
+		s = s2 + h*self.q
+
+		return _i_to_b(s)
 
 	def unblind(self, blinded_sig, blinding_factor):
 		"""Unblind a signature blinded_sig of a message that has been blinded with
