@@ -105,13 +105,22 @@ def mod_inverse(a, m):
 	return res
 
 def _i_to_b(i):
+	if i is None:
+		return None
+
 	return i.to_bytes(math.ceil(i.bit_length()/8), 'big')
 
 def _b_to_i(b):
+	if b is None:
+		return None
+
 	return int.from_bytes(b, 'big')
 
 class Blinder:
 	"""Make and verify blinded signatures."""
+
+	_pub_attrs = ('n', 'e')
+	_priv_attrs = ('n', 'e', 'd')
 
 	@classmethod
 	def generate(class_, bits):
@@ -155,20 +164,18 @@ class Blinder:
 		"""
 
 		data = msgpack.loads(serialized)
-		return class_(
-			_b_to_i(data[b'n']),
-			data[b'e'],
-			data[b'd'] and _b_to_i(data[b'd'])
-		)
+		data = {k.decode(): v for k, v in data.items()}
+
+		return class_(**{
+			_: _b_to_i(data[_]) for _ in class_._priv_attrs
+		})
 
 	def serialize(self):
 		"""Return a bytes representation of ourselves."""
 
-		return msgpack.dumps(dict(
-			n = _i_to_b(self.n),
-			e = self.e,
-			d = (self.d and _i_to_b(self.d))
-		))
+		return msgpack.dumps({
+			_: _i_to_b(getattr(self, _, None)) for _ in self._priv_attrs
+		})
 
 	def __init__(self, n, e, d=None):
 		"""
