@@ -8,10 +8,107 @@ True
 >>> blinder.public.verify(b'msg', b'invalid signature')
 False
 """
-import bignum
+
+from ctypes import *
+from ctypes.util import find_library
 import msgpack
 import hashlib
 import math
+
+__libssl_name = find_library('ssl')
+if not __libssl_name:
+	raise ImportError("OpenSSL must be installed to use this module.")
+libssl = CDLL(__libssl_name)
+libssl.ERR_load_crypto_strings()
+
+def randint(bits, entropy_source=open('/dev/urandom', 'rb')):
+	"""Generate a random number with bits of entropy."""
+
+	rlen, extra_len = divmod(bits, 8)
+	if extra_len:
+		extra = chr( ord(entropy_source.read(1)) & ((1 << extra_len) - 1) ).encode()
+	else:
+		extra = b''
+
+	return int.from_bytes(extra + entropy_source.read(rlen), 'big')
+
+def generate_prime(bits):
+	"""Generate a prime with bits bits."""
+
+	prime = c_void_p( libssl.BN_new() )
+	libssl.BN_init(prime)
+
+	libssl.BN_generate_prime(prime, c_int(bits), c_int(0), c_void_p(), c_void_p(),
+	                         c_void_p(), c_void_p())
+	
+	prime_repr = create_string_buffer( math.ceil(libssl.BN_num_bits(prime)/8) )
+	libssl.BN_bn2bin(prime, prime_repr)
+
+	libssl.BN_clear_free(prime)
+
+	return _b_to_i(prime_repr)
+
+def mod_inverse(a, m):
+	"""a¯¹ (mod m)
+
+	>>> mod_inverse(1, 42978)
+	1
+	>>> mod_inverse(14, 2978)
+	Traceback (most recent call last):
+	...
+	RuntimeError: b'no inverse'
+	>>> mod_inverse(142, 978)
+	Traceback (most recent call last):
+	...
+	RuntimeError: b'no inverse'
+	>>> mod_inverse(1429, 78)
+	25
+	>>> mod_inverse(14297, 8)
+	1
+	"""
+
+	if not (isinstance(a, int) and isinstance(m, int)):
+		raise TypeError("Arguments to mod_inverse must be ints")
+
+	def i_to_bn(i):
+		"""Turn i into a BIGNUM."""
+
+		i_repr = create_string_buffer(str(i).encode())
+		i_bn = c_void_p()
+		libssl.BN_dec2bn(pointer(i_bn), i_repr)
+		return i_bn
+
+	def bn_to_i(bn):
+		"""Turn a bn into an int."""
+
+		s = libssl.BN_bn2dec(bn)
+		res = int(string_at(s))
+		libssl.CRYPTO_free(s)
+		return res
+
+	ctx = libssl.BN_CTX_new()
+	libssl.BN_CTX_init(ctx)
+
+	a_bn = i_to_bn(a)
+	m_bn = i_to_bn(m)
+
+	res_bn = libssl.BN_mod_inverse(c_void_p(), a_bn, m_bn, ctx)
+	if not res_bn:
+		err = libssl.ERR_reason_error_string(libssl.ERR_get_error())
+		raise RuntimeError( str(string_at(err)) )
+	res = bn_to_i(res_bn)
+
+	libssl.BN_CTX_free(ctx)
+	for _ in a_bn, m_bn, res_bn:
+		libssl.BN_clear_free(_)
+
+	return res
+
+def _i_to_b(i):
+	return i.to_bytes(math.ceil(i.bit_length()/8), 'big')
+
+def _b_to_i(b):
+	return int.from_bytes(b, 'big')
 
 class Blinder:
 	"""Make and verify blinded signatures."""
@@ -22,8 +119,8 @@ class Blinder:
 
 		# Generate two primes of bits/2. When multiplied, they'll make an RSA key of
 		# bits bits.
-		p = bignum.generate_prime(bits//2)
-		q = bignum.generate_prime(bits//2)
+		p = generate_prime(bits//2)
+		q = generate_prime(bits//2)
 
 		# Calculate the totient of p*q.
 		φ = (p-1) * (q-1)
@@ -32,12 +129,12 @@ class Blinder:
 		# any reasonable value for bits, but it might be a problem in an example or
 		# such.
 		if 65537 > φ:
-			e = bignum.BigNum(3)
+			e = 3
 		else:
-			e = bignum.BigNum(65537)
+			e = 65537
 
 		# Generate our private key.
-		d = pow(e, -1, φ)
+		d = mod_inverse(e, φ)
 
 		return class_(n=p*q, e=e, d=d)
 
@@ -58,15 +155,19 @@ class Blinder:
 		"""
 
 		data = msgpack.loads(serialized)
-		return class_( data[b'n'], data[b'e'], data[b'd'] )
+		return class_(
+			_b_to_i(data[b'n']),
+			data[b'e'],
+			data[b'd'] and _b_to_i(data[b'd'])
+		)
 
 	def serialize(self):
 		"""Return a bytes representation of ourselves."""
 
 		return msgpack.dumps(dict(
-			n = self.n.serialize(),
-			e = self.e.serialize(),
-			d = (self.d and self.d.serialize())
+			n = _i_to_b(self.n),
+			e = self.e,
+			d = (self.d and _i_to_b(self.d))
 		))
 
 	def __init__(self, n, e, d=None):
@@ -85,27 +186,17 @@ class Blinder:
 		OverflowError: d is too large
 		"""
 
-		def b(_):
-			if isinstance(_, bignum.BigNum):
-				return _
-			elif isinstance(_, int):
-				return bignum.BigNum(_)
-			elif isinstance(_, bytes):
-				return bignum.BigNum.deserialize(_)
-			else:
-				raise TypeError("Blinder() arguments must be convertible to BigNums")
-
-		self.n = b(n)
-		self.e = b(e)
-		self.d = (d and b(d))
-		self._n_len = len(self.n)
+		self.n = n
+		self.e = e
+		self.d = d
+		self._n_len = self.n.bit_length()
 
 		# Ensure that keys are not too large (to avoid DoS attacks).
 		if self._n_len > 4096:
 			raise OverflowError("Keys over 4096 bits are not allowed")
-		elif len(self.e) > 128:
+		elif self.e.bit_length() > 128:
 			raise OverflowError("e is too large")
-		elif self.d and (len(self.d) > 4096):
+		elif self.d and (self.d.bit_length() > 4096):
 			raise OverflowError("d is too large")
 
 	@property
@@ -124,13 +215,13 @@ class Blinder:
 
 		return bool(self.d)
 
-	def _bignum_digest(self, msg):
-		"""Return the BigNum representation of a SHA512 digest of msg modulo N.
+	def _int_digest(self, msg):
+		"""Return the int representation of a SHA512 digest of msg modulo N.
 
 		>>> b = Blinder.generate(256)
-		>>> b._bignum_digest(b"leni") == b._bignum_digest(b"leni")
+		>>> b._int_digest(b"leni") == b._int_digest(b"leni")
 		True
-		>>> b._bignum_digest(b"hanging") == b._bignum_digest(b"tree")
+		>>> b._int_digest(b"hanging") == b._int_digest(b"tree")
 		False
 		"""
 		
@@ -143,7 +234,7 @@ class Blinder:
 			dgst += hasher.digest()
 
 		# Mask dgst to the length of self.n.
-		dgst = bignum.BigNum.deserialize(dgst) % (1 << self._n_len)
+		dgst = _b_to_i(dgst) % (1 << self._n_len)
 		# And then ensure that dgst is less than self.n.
 		dgst = dgst % self.n
 
@@ -154,11 +245,11 @@ class Blinder:
 		tuple (blinding_factor, blinded_sig). (blinding_factor is a BigNum and
 		blinded_sig is a bytes instance.)"""
 
-		m = self._bignum_digest(msg)
-		r = bignum.generate_random_bignum(len(self.n))
+		m = self._int_digest(msg)
+		r = randint(self._n_len)
 		blinded = pow(r, self.e, self.n) * (m % self.n)
 
-		return (r, blinded.serialize())
+		return (r, _i_to_b(blinded))
 
 	def sign(self, blinded_msg):
 		"""Sign a message blinded_msg that has already been blinded by blind().
@@ -168,23 +259,23 @@ class Blinder:
 		if not self.d:
 			raise NotImplementedError("we can't sign stuff (we're not a private key)")
 
-		m = bignum.BigNum.deserialize(blinded_msg)
-		return pow(m, self.d, self.n).serialize()
+		m = _b_to_i(blinded_msg)
+		return _i_to_b(pow(m, self.d, self.n))
 
 	def unblind(self, blinded_sig, blinding_factor):
 		"""Unblind a signature blinded_sig of a message that has been blinded with
 		blinding_factor."""
 
-		bs = bignum.BigNum.deserialize(blinded_sig)
-		s = bs * pow(blinding_factor, -1, self.n)
-		return s.serialize()
+		bs = _b_to_i(blinded_sig)
+		s = bs * mod_inverse(blinding_factor, self.n)
+		return _i_to_b(s)
 
 	def verify(self, message, signature):
 		"""Verify a signature of an unblinded message signed by self. We return True
 		if the signature is valid and False otherwise."""
 
-		m = self._bignum_digest(message)
-		s = bignum.BigNum.deserialize(signature)
+		m = self._int_digest(message)
+		s = _b_to_i(signature)
 
 		return (pow(s, self.e, self.n) == m)
 
