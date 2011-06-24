@@ -33,7 +33,8 @@ def randint(bits, entropy_source=open('/dev/urandom', 'rb')):
 	return int.from_bytes(extra + entropy_source.read(rlen), 'big')
 
 def generate_prime(bits):
-	"""Generate a prime with bits bits."""
+	"""Generate a prime with bits bits. The top two bits of our return value will
+	always be set."""
 
 	prime = c_void_p( libssl.BN_new() )
 	libssl.BN_init(prime)
